@@ -14,6 +14,27 @@ from minos.lib.util.ActionTraces import ActionTraces
 from minos.lib.util.StateSet import StateSet
 from minos.lib.util.VideoWriter import VideoWriter
 
+import random
+import time
+
+from PIL import Image
+import os
+
+
+'''
+im_size = 256
+mean = 0.5
+std = 0.5
+batch_size = 16
+model_dir = '/home/sohail/trained_model/'
+n_classes = 6
+start_image_path = '/home/sohail/Tracking.jpg'
+end_image_path = '/home/sohail/TrackLost.jpg'
+track_status_file_path = '/home/sohail/track_status.txt'
+'''
+image_save_directory='/home/sohail/frames3'
+
+
 
 REPLAY_MODES = ['actions', 'positions']
 VIDEO_WRITER = None
@@ -68,6 +89,7 @@ def draw_forces(forces, display_surf, area):
         pygame.draw.circle(display_surf, (255,255,0), (x,y), r, width)
         theta += dt
 
+
 def draw_offset(offset, display_surf, area, color=(0,0,255)):
     dir = (offset[0], offset[2])
     mag = math.sqrt(dir[0]*dir[0] + dir[1]*dir[1])
@@ -80,6 +102,7 @@ def draw_offset(offset, display_surf, area, color=(0,0,255)):
     pygame.draw.circle(display_surf, (255,255,255), center, size, 0)
     pygame.draw.line(display_surf, color, center, target, 1)
     pygame.draw.circle(display_surf, color, target, 4, 0)
+
 
 def display_response(response, display_surf, camera_outputs, print_observation=False, write_video=False):
     global VIDEO_WRITER
@@ -134,17 +157,6 @@ def display_response(response, display_surf, camera_outputs, print_observation=F
         pygame.sndarray.make_sound(audio_data).play()
         # pygame.mixer.Sound(audio_data).play()
 
-def ensure_size(display_surf, rw, rh):
-    w = display_surf.get_width()
-    h = display_surf.get_height()
-    if w < rw or h < rh:
-        # Resize display (copying old stuff over)
-        old_display_surf = display_surf.convert()
-        display_surf = pygame.display.set_mode((max(rw,w), max(rh,h)), pygame.RESIZABLE | pygame.DOUBLEBUF)
-        display_surf.blit(old_display_surf, (0,0))
-        return display_surf, True
-    else:
-        return display_surf, False
 
 def write_text(display_surf, text, position, font=None, fontname='monospace', fontsize=12, color=(255,255,224), align=None):
     """
@@ -167,14 +179,245 @@ def write_text(display_surf, text, position, font=None, fontname='monospace', fo
     else:
         display_surf.blit(text_surface, position)
 
+
+collision_counter = 10
+
+
+def get_angle(x_vector,y_vector):
+    angle = 0.0
+    if abs(x_vector) > 0:
+        angle = math.atan2(y_vector, x_vector)*180/math.pi
+        if angle >0:
+            angle=angle-180
+        else:
+            angle=angle+180
+        print('Atan2 Angle: ', angle)
+    return angle
+
+
+def get_random_action():
+    actions = [119, 115, 97, 100, 276, 275]
+    try:
+        rand_no = random.randint(0, 5)
+        next_action = actions[rand_no]
+    except IndexError:
+        next_action = actions[5]
+    return next_action
+
+previous_action = 0
+scan_direction = 'right'
+move_direction = 'forward'
+image_counter = 0
+
+
+keycode_right = K_d
+keycode_left = K_a
+keycode_forward = K_w
+keycode_backward = K_s
+
+
+def generate_key_press_explore(has_collided, exploration_counter, observation):
+    global previous_action, collision_counter, scan_direction, image_counter
+    if not os.path.isdir(image_save_directory):
+        os.mkdir(image_save_directory)
+    
+    if exploration_counter == 0:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 275 #Turn Right
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    elif exploration_counter == 1:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 276 #Turn Left
+        print('Next Action: ',next_action)       
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    elif exploration_counter == 2:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 276 #Turn Left
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+    
+    elif exploration_counter == 3:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 275 #Turn Right
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    elif exploration_counter == 4:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 97
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    elif exploration_counter == 5:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 100
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    elif exploration_counter == 6:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 100
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    elif exploration_counter == 7:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 97
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    elif exploration_counter == 8:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 119
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    elif exploration_counter == 9:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 115
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    elif exploration_counter == 10:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 115
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    elif exploration_counter == 11:
+        current_image = get_observed_image(observation)
+        current_image.save(image_save_directory+str(image_counter)+'.png')
+        next_action = 119
+        print('Next Action: ',next_action)
+        dump_image = 1
+        image_counter = image_counter + 1
+
+    exploration_counter = exploration_counter + 1
+    empty_keys = np.zeros(323, dtype='i')
+    empty_keys[next_action] = 1
+    return tuple(empty_keys),exploration_counter
+
+def generate_key_press_scan(has_collided, args):
+    global previous_action, collision_counter, scan_direction, image_counter
+
+    #time.sleep(0.2)
+    
+    
+    # Tracking......
+    if previous_action == 0:  # Start of Simulation
+        next_action = keycode_right  # Start with Right
+
+    else:  # Ongoing Simulation (Not the Start)
+        if has_collided is not True:  # If you've not collided
+            if previous_action != keycode_forward and previous_action != keycode_backward:
+                # If last action was not forward and neither backward, keep moving in the same direction
+                if (previous_action == keycode_left and scan_direction == 'left') or (previous_action == keycode_right and scan_direction == 'right'):
+                    next_action = previous_action
+                # else: #Could this be for Rotation?
+                #     if move_direction == 'forward':
+                #         next_action = keycode_forward
+                #     elif move_direction == 'backward':
+                #         next_action = keycode_backward
+            else:  # If You've not collided and Last Action was Forward or Backward, Reverse the direction of Scan
+                if scan_direction == 'right':
+                    scan_direction = 'left'
+                    next_action = keycode_left
+                else:
+                    scan_direction = 'right'
+                    next_action = keycode_right
+        else:  # Collision has occurred
+            if previous_action == keycode_right and previous_action == keycode_left:  # Collision Occurred while moving left or right
+                if move_direction == 'forward':
+                    next_action = keycode_forward  # Move Forward for next scan
+                elif move_direction == 'backward':
+                    next_action = keycode_backward  # Move Backward for next scan
+            else:  # Collision Occurred while moving forward or backward for new scan
+                # Take an opposite step from the direction of scan                
+                if scan_direction == 'right':
+                    next_action = keycode_left
+                if scan_direction == 'left':
+                    next_action = keycode_right
+                    
+                if 'state_set' in args:
+                    state = args.state_set.get_next_state()
+                    sim.move_to(state['start']['position'], state['start']['angle'])
+                print('------------------May be Stuck Here----------------------')
+    
+    previous_action = next_action
+
+    empty_keys = np.zeros(323, dtype='i')
+    empty_keys[next_action] = 1
+    return tuple(empty_keys)
+
+
+def get_observed_image(observation):
+    current_image_shape = observation['sensors']['color']['data'].shape
+    current_image_array = np.reshape(observation['sensors']['color']['data'], current_image_shape)
+    current_image = Image.frombytes('RGBA', (current_image_shape[0], current_image_shape[1]), current_image_array)
+    return current_image
+
+
+def get_merged_image(first_image, second_image):
+    start_image_gray = first_image.convert(mode='L')
+    end_image_gray = second_image.convert(mode='L')
+    dummy_channel = Image.new(mode='L', size=end_image_gray.size)
+    merged_image = Image.merge(mode='RGB', bands=(start_image_gray, end_image_gray, dummy_channel))
+    return merged_image
+
+
+
+
+
+def is_close(current_pos):
+    global visited_pos
+    threshold_x = 0.01
+    threshold_y = 0.01
+    threshold_angle = 2
+
+    for v in visited_pos:
+        if abs(current_pos[0]-v[0]) < threshold_x and abs(current_pos[1] - v[1]) < threshold_y and abs(current_pos[2] - v[2]) < threshold_angle:
+            return True
+    return False
+
+
 def interactive_loop(sim, args):
+    
     # initialize
-    pygame.mixer.pre_init(frequency=8000, channels=1)
+    pygame.mixer.pre_init(frequency = 8000, channels = 1)
     pygame.init()
     pygame.key.set_repeat(500, 50)  # delay, interval
     clock = pygame.time.Clock()
 
+    # Set Up Model
+    
     # Set up display
+    font_spacing = 20
+    display_height = args.height + font_spacing*3
     all_camera_observations = ['color', 'depth', 'normal', 'objectId', 'objectType', 'roomId', 'roomType']
     label_positions = {
         'curr': {},
@@ -185,36 +428,20 @@ def interactive_loop(sim, args):
         'goal': {}
     }
 
-    # get observation space and max height
-    observation_space = sim.get_observation_space()
-    spaces = [observation_space.get('sensors').get(obs) for obs in all_camera_observations if args.observations.get(obs)]
-    heights = [s.shape[1] for s in spaces]
-
     # row with observations and goals
     nimages = 0
-    total_width = 0
-    max_height = max(heights)
-    font_spacing = 20
-    display_height = max_height + font_spacing*3
     for obs in all_camera_observations:
         if args.observations.get(obs):
-            space = observation_space.get('sensors').get(obs)
-            print('space', space)
-            width = space.shape[0]   # TODO: have height be first to be more similar to other libraries
-            height = space.shape[1]
-            label_positions['curr'][obs] = (total_width, font_spacing*2)
-            camera_outputs['curr'][obs] = { 'position': (total_width, font_spacing*3) }
+            label_positions['curr'][obs] = (args.width*nimages, font_spacing*2)
+            camera_outputs['curr'][obs] = { 'position': (args.width*nimages, font_spacing*3) }
             if args.show_goals:
-                label_positions['goal'][obs] = (total_width, display_height + font_spacing*2)
-                camera_outputs['goal'][obs] = { 'position': (total_width, display_height + font_spacing*3) }
+                label_positions['goal'][obs] = (args.width*nimages, display_height + font_spacing*2)
+                camera_outputs['goal'][obs] = { 'position': (args.width*nimages, display_height + font_spacing*3) }
             nimages += 1
-            total_width += width
-            if height > max_height:
-                max_height = height
 
 
     if args.show_goals:
-        display_height += max_height + font_spacing*3
+        display_height += args.height + font_spacing*3
 
     # Row with offset and map
     plot_size = max(min(args.height, 128), 64)
@@ -235,7 +462,7 @@ def interactive_loop(sim, args):
     display_height += font_spacing
     display_height += plot_size
 
-    display_shape = [max(total_width, next_start_x), display_height]
+    display_shape = [max(args.width * nimages, next_start_x), display_height]
     display_surf = pygame.display.set_mode((display_shape[0], display_shape[1]), pygame.RESIZABLE | pygame.DOUBLEBUF)
 
     # Write text
@@ -274,16 +501,44 @@ def interactive_loop(sim, args):
         print('P = toggle auto replay, E = toggle replay using %s '
               % str([m + ('*' if m == replay_mode else '') for m in REPLAY_MODES]))
     print('***\n***')
+    
+    ##############################################
+    has_collided = False
+    direction = [0.0, 0.0, 0.0]
+    prev_image = None
+    current_image = None
+    generate_dataset = False
+    visited_pos = list()
+
+    i = 0
+
+    explore = False
+    exploration_counter = 0
+    observation = None
 
     while sim.running:
+
+        time.sleep(0.5)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sim.running = False
 
+        
         # read keys
-        keys = pygame.key.get_pressed()
-        print(type(keys),len(keys))
+        keys = generate_key_press_scan(has_collided, args)
+        if observation is not None and explore:
+            keys, exploration_counter = generate_key_press_explore(has_collided, exploration_counter, observation)
+        if exploration_counter>11:
+            exploration_counter = 0
+
+        if keys[0] == 1:  # We are stuck!
+            break
+
+        #keys = pygame.key.get_pressed()
+
         print_next_observation = False
+        
         if keys[K_q]:
             break
 
@@ -354,16 +609,24 @@ def interactive_loop(sim, args):
             else:
                 if keys[K_w]:
                     action['name'] = 'forwards'
+                    print('Action: Forward')
                 elif keys[K_s]:
                     action['name'] = 'backwards'
-                elif keys[K_LEFT]:
+                    print('Action: Backward')
+                elif keys[pygame.K_LEFT]:
+                    # ASCII Code 276
                     action['name'] = 'turnLeft'
+                    print('Action: Rotate Left')
                 elif keys[K_RIGHT]:
+                    # ASCII Code 275
                     action['name'] = 'turnRight'
+                    print('Action: Rotate Right')
                 elif keys[K_a]:
                     action['name'] = 'strafeLeft'
+                    print('Action: Strafe Left')
                 elif keys[K_d]:
                     action['name'] = 'strafeRight'
+                    print('Action: Strafe Right')
                 elif keys[K_UP]:
                     action['name'] = 'lookUp'
                 elif keys[K_DOWN]:
@@ -381,6 +644,38 @@ def interactive_loop(sim, args):
 
         # Handle map
         observation = response.get('observation')
+
+        ##########################################
+        distance_from_origin = math.sqrt((response['info']['agent_state']['position'][0])**2 + (response['info']['agent_state']['position'][2])**2)
+        #print('Position: ', response['info']['agent_state']['position'][0], response['info']['agent_state']['position'][1], response['info']['agent_state']['position'][2])
+        print('Distance from Origin: ', distance_from_origin)
+        orientation = response['info']['agent_state']['position']
+        orientation_angle = get_angle(orientation[2], orientation[0])
+        #print('Orientation Angle: ', orientation_angle)
+        position_orientation = (response['info']['agent_state']['position'][0], response['info']['agent_state']['position'][2], orientation_angle)
+        print('Position: ',position_orientation[0],position_orientation[1],', Orientation: ',orientation_angle)
+        #print('Visited POS: ', visited_pos, type(visited_pos))
+        if not is_close(position_orientation):
+            visited_pos.append(position_orientation)
+            # explore = 1
+
+        if generate_dataset:
+            prev_image = current_image
+            current_image = get_observed_image(observation)
+            current_image.save(fp=os.path.join('/home/romi/' + action['name'] + str(i) + '.jpg'))
+            i = i+1
+
+            # if prev_image is not None and has_collided is False:
+            #     # Only Save Image if there is no Collision and There exists a Previous Observation
+            #     print('Save the Merged Image')
+            #     merged_image = get_merged_image(first_image=prev_image, second_image=current_image)
+            #     merged_image.save(fp=os.path.join('/home/romi/' + action['name'] + str(i) + '.jpg'))
+            #     i = i+1
+
+
+        has_collided = observation['collision']
+        #####################################################
+
         map = observation.get('map')
         if map is not None:
             # TODO: handle multiple maps
@@ -390,10 +685,15 @@ def interactive_loop(sim, args):
             img = map['data']
             rw = map['shape'][0] + config.get('position')[0]
             rh = map['shape'][1] + config.get('position')[1]
-            display_surf, resized = ensure_size(display_surf, rw, rh)
-            if resized:
+            w = display_surf.get_width()
+            h = display_surf.get_height()
+            if w < rw or h < rh:
+                # Resize display (copying old stuff over)
+                old_display_surf = display_surf.convert()
+                display_surf = pygame.display.set_mode((max(rw,w), max(rh,h)), pygame.RESIZABLE | pygame.DOUBLEBUF)
+                display_surf.blit(old_display_surf, (0,0))
                 write_text(display_surf, 'map', position = label_positions['map'])
-            blit_img_to_surf(img, display_surf, config.get('position'), surf_key='map')
+            blit_img_to_surf(img, display_surf, config.get('position'), surf_key='map')  # Map is drawn here
 
         # Handle other response
         display_response(response, display_surf, camera_outputs['curr'], print_observation=print_next_observation, write_video=True)

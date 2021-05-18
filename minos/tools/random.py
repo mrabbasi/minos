@@ -6,7 +6,7 @@ import pygame
 from pygame.locals import *
 from timeit import default_timer as timer
 import traceback
-
+import os
 from minos.lib import common
 from minos.config.sim_args import parse_sim_args
 from minos.lib.Simulator import Simulator
@@ -14,10 +14,12 @@ from minos.lib.util.ActionTraces import ActionTraces
 from minos.lib.util.StateSet import StateSet
 from minos.lib.util.VideoWriter import VideoWriter
 
+import random,time
 
 REPLAY_MODES = ['actions', 'positions']
 VIDEO_WRITER = None
 TMP_SURFS = {}
+
 
 
 def blit_img_to_surf(img, surf, position=(0, 0), surf_key='*'):
@@ -134,18 +136,6 @@ def display_response(response, display_surf, camera_outputs, print_observation=F
         pygame.sndarray.make_sound(audio_data).play()
         # pygame.mixer.Sound(audio_data).play()
 
-def ensure_size(display_surf, rw, rh):
-    w = display_surf.get_width()
-    h = display_surf.get_height()
-    if w < rw or h < rh:
-        # Resize display (copying old stuff over)
-        old_display_surf = display_surf.convert()
-        display_surf = pygame.display.set_mode((max(rw,w), max(rh,h)), pygame.RESIZABLE | pygame.DOUBLEBUF)
-        display_surf.blit(old_display_surf, (0,0))
-        return display_surf, True
-    else:
-        return display_surf, False
-
 def write_text(display_surf, text, position, font=None, fontname='monospace', fontsize=12, color=(255,255,224), align=None):
     """
     text -> string of text.
@@ -167,6 +157,100 @@ def write_text(display_surf, text, position, font=None, fontname='monospace', fo
     else:
         display_surf.blit(text_surface, position)
 
+
+previous_action = 119
+collision_counter = 10
+final_time = 0
+count=0
+
+def get_angle(x_vector,y_vector):
+    angle = 0.0
+    if abs(x_vector) > 0:
+        angle = math.atan2(y_vector, x_vector)*180/math.pi
+        if angle >0:
+            angle=angle-180
+        else:
+            angle=angle+180
+        print('Direction to goal: ', angle)
+    return angle
+
+
+def get_random_action():
+    actions = [119, 115, 97, 100, 276, 275]
+    try:
+        rand_no = random.randint(0, 5)
+        next_action = actions[rand_no]
+    except IndexError:
+        next_action = actions[5]
+    return next_action
+
+def classifier():
+    print("Running Classifier")
+    os.system('/home/romi/SingleImageClassifier.py')
+    fd = "/home/romi/abc2.txt"
+    file = open(fd, 'r') 
+    text = file.read() 
+    if text=="Forward":
+        return("119")
+    elif text=="Back":
+        return("115")
+    elif text=="CW":
+        return("275")
+    elif text=="CCW":
+        return("276")
+    elif text=="Right":
+        return("100")
+    elif text=="Left":
+        return("97")
+
+normal_counter = 0
+def generate_key_press(has_collided, direction, distance):
+    global previous_action, collision_counter, normal_counter
+    time.sleep(0.8)
+    if normal_counter%2 == 0:
+        next_action = 119
+    else:
+        angle = get_angle(x_vector=direction[2], y_vector=direction[0])
+        #print('Angle: ', angle)
+
+        if abs(angle) < 13:
+            # The angle difference is very Small (Keep Moving Unless You Collide)
+            next_action = 119
+            if has_collided:
+                print('Collision Detected: Taking Random Action')
+                next_action = get_random_action()
+            else:
+                print('No Collision: Moving Forward')
+                next_action = 119
+        else:
+            # Need to Adjust Angle
+            print('Adjusting Angle')
+            if angle > 0:
+                # Turn Left
+                next_action = 276
+
+            else:
+                # Turn Right
+                next_action = 275
+
+        if distance < 0.3:
+            print("Goal Reached")
+            time.sleep(3)
+            scene_index = (scene_index + 1) % len(args.scene_ids)
+            scene_id = args.scene_ids[scene_index]
+            id = scene_dataset + '.' + scene_id
+            print('next_scene loading %s ...' % id)
+            sim.set_scene(id)
+            sim.episode_info = sim.start()
+
+    normal_counter = normal_counter + 1
+    previous_action = next_action
+
+    empty_keys = np.zeros(323, dtype='i')
+    empty_keys[next_action] = 1
+    return tuple(empty_keys)
+
+
 def interactive_loop(sim, args):
     # initialize
     pygame.mixer.pre_init(frequency=8000, channels=1)
@@ -175,6 +259,8 @@ def interactive_loop(sim, args):
     clock = pygame.time.Clock()
 
     # Set up display
+    font_spacing = 20
+    display_height = args.height + font_spacing*3
     all_camera_observations = ['color', 'depth', 'normal', 'objectId', 'objectType', 'roomId', 'roomType']
     label_positions = {
         'curr': {},
@@ -185,36 +271,20 @@ def interactive_loop(sim, args):
         'goal': {}
     }
 
-    # get observation space and max height
-    observation_space = sim.get_observation_space()
-    spaces = [observation_space.get('sensors').get(obs) for obs in all_camera_observations if args.observations.get(obs)]
-    heights = [s.shape[1] for s in spaces]
-
     # row with observations and goals
     nimages = 0
-    total_width = 0
-    max_height = max(heights)
-    font_spacing = 20
-    display_height = max_height + font_spacing*3
     for obs in all_camera_observations:
         if args.observations.get(obs):
-            space = observation_space.get('sensors').get(obs)
-            print('space', space)
-            width = space.shape[0]   # TODO: have height be first to be more similar to other libraries
-            height = space.shape[1]
-            label_positions['curr'][obs] = (total_width, font_spacing*2)
-            camera_outputs['curr'][obs] = { 'position': (total_width, font_spacing*3) }
+            label_positions['curr'][obs] = (args.width*nimages, font_spacing*2)
+            camera_outputs['curr'][obs] = { 'position': (args.width*nimages, font_spacing*3) }
             if args.show_goals:
-                label_positions['goal'][obs] = (total_width, display_height + font_spacing*2)
-                camera_outputs['goal'][obs] = { 'position': (total_width, display_height + font_spacing*3) }
+                label_positions['goal'][obs] = (args.width*nimages, display_height + font_spacing*2)
+                camera_outputs['goal'][obs] = { 'position': (args.width*nimages, display_height + font_spacing*3) }
             nimages += 1
-            total_width += width
-            if height > max_height:
-                max_height = height
-
-
+    global final_time
+    global count
     if args.show_goals:
-        display_height += max_height + font_spacing*3
+        display_height += args.height + font_spacing*3
 
     # Row with offset and map
     plot_size = max(min(args.height, 128), 64)
@@ -235,7 +305,7 @@ def interactive_loop(sim, args):
     display_height += font_spacing
     display_height += plot_size
 
-    display_shape = [max(total_width, next_start_x), display_height]
+    display_shape = [max(args.width * nimages, next_start_x), display_height]
     display_surf = pygame.display.set_mode((display_shape[0], display_shape[1]), pygame.RESIZABLE | pygame.DOUBLEBUF)
 
     # Write text
@@ -274,15 +344,131 @@ def interactive_loop(sim, args):
         print('P = toggle auto replay, E = toggle replay using %s '
               % str([m + ('*' if m == replay_mode else '') for m in REPLAY_MODES]))
     print('***\n***')
+    has_collided=False
+    direction=[0.0,0.0,0.0]
+    distance=10
+    total_frames=0
+    pos = [-2.8103108374095114, 0.5275233, -17.989381395036254]
 
+    ang=4.88692       #angle in radian
+    tilt=0            #tilt angle in radian (keep it zero)
+    print('\nMoving to Starting Point\t',pos,ang)
+    sim.move_to(pos,ang,tilt)                     #define starting point here by pressing 'v'v
+    '''
+    House 17DRP5sb8fy
+    Point A: 
+    [1.3307827641472185, 0.53861988, -10.146044853235205]
+    [3.5180930438444764, 0.566234, -1.8922092359314986]   dining room'
+    
+    [-1.4967893299263657, 0.5536211000000001, -9.28489025596529]
+
+    Point B:
+    [2.4621904181013585, 0.5086211, 1.905232439043702]
+    [1.5371551074831127, 0.566234, -7.069940355796163]   bedroom
+
+    [2.614761534032291, 0.5443598460000001, 2.082176819455741]
+
+    House JeFG25nYj2p
+
+    Point A:  
+    [-6.74225409821948, 0.55074358, 9.639630625521972] lounge
+    [-4.808781002856764, 0.579616, -3.2566622905687566]
+   
+    A: [6.161385541472788, 0.55074358, 1.0423787109815281]
+
+    [-9.969136013947448, 0.5890924000000001, 4.443266425597109]
+    [-3.8024725023701844, 0.5667730000000001, -3.897040174086085]  hallway
+
+    Point B: (Set in env_config file)
+    [5.324160089316311, 0.5293569, 1.0104915805896062]
+    [0.09539571149637265, 0.579616, 8.280566401485888]  familyroom/lounge
+   
+    [3.234156347243452, 0.54744289, 5.132335702885289]   kitchen
+    B: [-5.547085140683584, 0.55074358, -5.553243897709698]
+
+
+
+    House ZMojNkEp431
+    Point A:
+    [-1.648939148401732, -0.316777, 21.77250735917539]
+    [-7.257402680352993, -0.316777, 22.62233552621379]
+
+    Point B:
+    [1.5515085926612524, -0.316777, 27.586585491887465]
+
+    House q9vSo1VnCiC
+    Point A:
+    [-9.295046451025712, 0.54650591, 9.32940161221944]
+
+    Point B:
+    [-2.93651621783526, 0.5278996, -8.961261587263957]
+ 
+    House YVUC4YcDtcY (prob)
+    Point A:
+    [-22.444534161392085, 0.54291507, -16.989977211158624]
+
+    Point B:
+    [-30.20203545489092, 0.54291507, -7.346167078006564]
+
+    House qoiz87JEwZ2
+    Point A:
+    [4.309296503924577, 0.69781, -2.2073896572614493]
+
+    Point B:
+    [12.669347833403256, -2.7127, -0.9483520109703518]
+ 
+    '''
     while sim.running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sim.running = False
 
         # read keys
-        keys = pygame.key.get_pressed()
-        print(type(keys),len(keys))
+        fd = "/home/romi/abc.txt"
+        file = open(fd, 'r') 
+        text = file.read() 
+        text3="Tracking"
+        text2=""
+        text1="Track is lost"
+        #print("Text :", text)
+        #print("Count : " ,count) 
+        time_taken = timer() - final_time 
+        print(' fps=%f' % ( num_frames / time_taken))
+        total_frames=total_frames+num_frames
+        num_frames=0
+        final_time=timer()
+        if text==text3 and count >2:
+            count=0
+        elif text==text2 or text==text3 or count >=10:
+            if count>=10:
+                print('Failed Case, please recover tracks manually\n')   
+                keys = pygame.key.get_pressed()      
+            else:
+                #keys = pygame.key.get_pressed()
+                keys = generate_key_press(has_collided, direction,distance)
+                #print('key pressed',action['name'])
+                #time.sleep(0.5)
+                open('/home/romi/abc2.txt', 'w').close()
+                open('/home/romi/abc.txt', 'w').close()  
+
+        elif text==text1:
+            open('/home/romi/abc2.txt', 'w').close()
+            open('/home/romi/abc.txt', 'w').close()
+            print("\nTaking Random Steps to Recover\n")
+            text4 = get_random_action()
+            open('/home/romi/abc2.txt', 'w').close()
+            open('/home/romi/abc.txt', 'w').close()
+            empty_keys = np.zeros(323, dtype='i')
+            empty_keys[text4] = 1
+            keys= tuple(empty_keys)
+            count+=1
+            print("\nNumber of Random Movements done : ",count)
+
+        
+        
+      #  keys = pygame.key.get_pressed()
+
+
         print_next_observation = False
         if keys[K_q]:
             break
@@ -308,6 +494,14 @@ def interactive_loop(sim, args):
                 print('next_scene loading %s ...' % id)
                 sim.set_scene(id)
                 sim.episode_info = sim.start()
+        elif keys[K_v]:
+            prev_key = 'v' if prev_key is not 'v' else ''
+            if prev_key is 'v':
+                pos=[0.37536343739988054, 0.49121938, 1.7367364232544902]
+                ang=4.88692       #angle in radian
+                tilt=0            #tilt angle in radian (keep it zero)
+                print('\nMoving to Starting Point\t',pos,ang)
+                sim.move_to(pos,ang,tilt)                     #define starting point here by pressing 'v'v
         elif keys[K_r]:
             prev_key = 'r' if prev_key is not 'r' else ''
             if prev_key is 'r':
@@ -354,22 +548,30 @@ def interactive_loop(sim, args):
             else:
                 if keys[K_w]:
                     action['name'] = 'forwards'
+                    print('Action: Forward')
                 elif keys[K_s]:
                     action['name'] = 'backwards'
+                    print('Action: Backward')
                 elif keys[K_LEFT]:
+                    # ASCII Code 276
                     action['name'] = 'turnLeft'
+                    print('Action: Rotate Left')
                 elif keys[K_RIGHT]:
+                    # ASCII Code 275
                     action['name'] = 'turnRight'
+                    print('Action: Rotate Right')
                 elif keys[K_a]:
                     action['name'] = 'strafeLeft'
+                    print('Action: Strafe Left')
                 elif keys[K_d]:
                     action['name'] = 'strafeRight'
+                    print('Action: Strafe Right')
                 elif keys[K_UP]:
                     action['name'] = 'lookUp'
                 elif keys[K_DOWN]:
                     action['name'] = 'lookDown'
                 else:
-                    action['name'] = 'idle'
+                    action['name'] = 'idle' 
                 actions = [action]
 
         # step simulator and get observation
@@ -381,6 +583,10 @@ def interactive_loop(sim, args):
 
         # Handle map
         observation = response.get('observation')
+        direction = observation['measurements']['shortest_path_to_goal']['direction']
+        distance = observation['measurements']['shortest_path_to_goal']['distance']
+        print('Total Distance Remaining  ',distance)
+        has_collided = observation['collision']
         map = observation.get('map')
         if map is not None:
             # TODO: handle multiple maps
@@ -390,8 +596,13 @@ def interactive_loop(sim, args):
             img = map['data']
             rw = map['shape'][0] + config.get('position')[0]
             rh = map['shape'][1] + config.get('position')[1]
-            display_surf, resized = ensure_size(display_surf, rw, rh)
-            if resized:
+            w = display_surf.get_width()
+            h = display_surf.get_height()
+            if w < rw or h < rh:
+                # Resize display (copying old stuff over)
+                old_display_surf = display_surf.convert()
+                display_surf = pygame.display.set_mode((max(rw,w), max(rh,h)), pygame.RESIZABLE | pygame.DOUBLEBUF)
+                display_surf.blit(old_display_surf, (0,0))
                 write_text(display_surf, 'map', position = label_positions['map'])
             blit_img_to_surf(img, display_surf, config.get('position'), surf_key='map')
 
@@ -408,7 +619,7 @@ def interactive_loop(sim, args):
 
     # cleanup and quit
     time_taken = timer() - init_time
-    print('time=%f sec, fps=%f' % (time_taken, num_frames / time_taken))
+    print('time=%f sec, fps=%f' % (time_taken, total_frames / time_taken))
     print('Thank you for playing - Goodbye!')
     pygame.quit()
 

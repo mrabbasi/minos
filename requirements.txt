@@ -3,7 +3,7 @@ numpy
 scipy
 easydict
 matplotlib
-pygame
+pygame==1.9.6
 Pillow
 psutil
 pyyaml
