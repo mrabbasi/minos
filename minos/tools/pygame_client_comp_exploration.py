@@ -1,7 +1,7 @@
 import argparse
 import copy
 import math
-import numpy as np
+import numpy as np, pandas as pd
 import pygame
 from pygame.locals import *
 from timeit import default_timer as timer
@@ -32,7 +32,6 @@ start_image_path = '/home/sohail/Tracking.jpg'
 end_image_path = '/home/sohail/TrackLost.jpg'
 track_status_file_path = '/home/sohail/track_status.txt'
 '''
-image_save_directory='/home/sohail/frames3'
 
 
 
@@ -216,7 +215,7 @@ keycode_forward = K_w
 keycode_backward = K_s
 
 
-def generate_key_press_explore(has_collided, exploration_counter, observation):
+def generate_key_press_explore(has_collided, exploration_counter, observation, image_save_directory):
     global previous_action, collision_counter, scan_direction, image_counter
     if not os.path.isdir(image_save_directory):
         os.mkdir(image_save_directory)
@@ -391,10 +390,7 @@ def get_merged_image(first_image, second_image):
 
 
 
-
-
-def is_close(current_pos):
-    global visited_pos
+def is_close(current_pos,visited_pos):
     threshold_x = 0.01
     threshold_y = 0.01
     threshold_angle = 2
@@ -507,7 +503,9 @@ def interactive_loop(sim, args):
     direction = [0.0, 0.0, 0.0]
     prev_image = None
     current_image = None
-    generate_dataset = False
+    generate_dataset = True
+    image_save_directory = '/home/sohail/images'
+    csv_file_path='/home/sohail/data.csv'
     visited_pos = list()
 
     i = 0
@@ -515,6 +513,7 @@ def interactive_loop(sim, args):
     explore = False
     exploration_counter = 0
     observation = None
+
 
     while sim.running:
 
@@ -528,7 +527,7 @@ def interactive_loop(sim, args):
         # read keys
         keys = generate_key_press_scan(has_collided, args)
         if observation is not None and explore:
-            keys, exploration_counter = generate_key_press_explore(has_collided, exploration_counter, observation)
+            keys, exploration_counter = generate_key_press_explore(has_collided, exploration_counter, observation, image_save_directory)
         if exploration_counter>11:
             exploration_counter = 0
 
@@ -655,22 +654,31 @@ def interactive_loop(sim, args):
         position_orientation = (response['info']['agent_state']['position'][0], response['info']['agent_state']['position'][2], orientation_angle)
         print('Position: ',position_orientation[0],position_orientation[1],', Orientation: ',orientation_angle)
         #print('Visited POS: ', visited_pos, type(visited_pos))
-        if not is_close(position_orientation):
+        if not is_close(position_orientation,visited_pos):
             visited_pos.append(position_orientation)
             # explore = 1
 
         if generate_dataset:
+            if not os.path.isdir(image_save_directory):
+                os.mkdir(image_save_directory)
+            
             prev_image = current_image
             current_image = get_observed_image(observation)
-            current_image.save(fp=os.path.join('/home/romi/' + action['name'] + str(i) + '.jpg'))
+            full_image_path = image_save_directory+'/'+str(image_counter)+'.png'
+            current_image.save(full_image_path)
+            if os.path.isfile(csv_file_path):
+                dataset_df = pd.read_csv(csv_file_path)
+            else:
+                dataset_df = pd.DataFrame()
+            data={
+                'x': position_orientation[0],
+                'y': position_orientation[1],
+                'orientation_angle': orientation_angle,
+                'image_path': full_image_path
+            }
+            dataset_df=dataset_df.append(data,ignore_index=True)
+            dataset_df.to_csv(csv_file_path)
             i = i+1
-
-            # if prev_image is not None and has_collided is False:
-            #     # Only Save Image if there is no Collision and There exists a Previous Observation
-            #     print('Save the Merged Image')
-            #     merged_image = get_merged_image(first_image=prev_image, second_image=current_image)
-            #     merged_image.save(fp=os.path.join('/home/romi/' + action['name'] + str(i) + '.jpg'))
-            #     i = i+1
 
 
         has_collided = observation['collision']

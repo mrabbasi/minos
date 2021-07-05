@@ -3,6 +3,7 @@ numpy
 scipy
 easydict
 matplotlib
+pandas==1.1.5
 pygame==1.9.6
 Pillow
 psutil

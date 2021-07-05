@@ -2,10 +2,14 @@ import argparse
 import copy
 import math
 import numpy as np
+import pandas as pd
+from pathlib import Path
+import matplotlib.pyplot as plt
 import pygame
 from pygame.locals import *
 from timeit import default_timer as timer
 import traceback
+import random, time
 
 from minos.lib import common
 from minos.config.sim_args import parse_sim_args
@@ -19,6 +23,26 @@ REPLAY_MODES = ['actions', 'positions']
 VIDEO_WRITER = None
 TMP_SURFS = {}
 
+def get_angle_rad(x_vector,y_vector):
+    angle = 0.0
+    if abs(x_vector) > 0:
+        angle = math.atan2(y_vector, x_vector)
+        if angle >0:
+            angle=angle-math.pi
+        else:
+            angle=angle+math.pi
+    return angle
+
+
+def get_angle(x_vector,y_vector):
+    angle = 0.0
+    if abs(x_vector) > 0:
+        angle = math.atan2(y_vector, x_vector)*180/math.pi
+        if angle >0:
+            angle=angle-180
+        else:
+            angle=angle+180
+    return angle
 
 def blit_img_to_surf(img, surf, position=(0, 0), surf_key='*'):
     global TMP_SURFS
@@ -167,6 +191,233 @@ def write_text(display_surf, text, position, font=None, fontname='monospace', fo
     else:
         display_surf.blit(text_surface, position)
 
+def calculate_nine_region_bounds(start_position, end_position):
+    x_distance=end_position[0]-start_position[0]
+    x_distance_diff=x_distance/3
+    z_distance=end_position[2]-start_position[2]
+    z_distance_diff=z_distance/3
+
+    bounds=[]
+    row_0=[]
+    row_1=[]
+    row_2=[]
+    row_0.append(
+        {
+            'start_x':start_position[0],
+            'start_y':start_position[1],
+            'start_z':start_position[2],
+        
+            'end_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
+            'end_y':start_position[1],
+            'end_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff)
+        }
+    )
+    row_0.append(
+        {
+            'start_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
+            'start_y':start_position[1],
+            'start_z':start_position[2],
+            
+            'end_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
+            'end_y':start_position[1],
+            'end_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff)
+        }
+    )
+    row_0.append(
+        {
+            'start_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
+            'start_y':start_position[1],
+            'start_z':start_position[2],
+            
+            'end_x':end_position[0],
+            'end_y':start_position[1],
+            'end_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff)
+        }
+    )
+    row_1.append(
+        {
+            'start_x':start_position[0],
+            'start_y':start_position[1],
+            'start_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff),
+
+            'end_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
+            'end_y':start_position[1],
+            'end_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff)
+        }
+    )
+    row_1.append(
+        {
+            'start_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
+            'start_y':start_position[1],
+            'start_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff),
+            
+            'end_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
+            'end_y':start_position[1],
+            'end_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff)
+        }
+    )
+    row_1.append(
+        {
+            'start_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
+            'start_y':start_position[1],
+            'start_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff),
+
+            'end_x':end_position[0],
+            'end_y':start_position[1],
+            'end_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff)
+        }
+    )
+    row_2.append(
+        {
+            'start_x':start_position[0],
+            'start_y':start_position[1],
+            'start_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff),
+            
+            'end_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
+            'end_y':start_position[1],
+            'end_z':end_position[2]
+        }
+    )
+    row_2.append(
+        {
+            'start_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
+            'start_y':start_position[1],
+            'start_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff),
+            
+            'end_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
+            'end_y':start_position[1],
+            'end_z':end_position[2]
+        }
+    )
+    row_2.append(
+        {
+            'start_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
+            'start_y':start_position[1],
+            'start_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff),
+            
+            'end_x':end_position[0],
+            'end_y':start_position[1],
+            'end_z':end_position[2]
+        }
+    )
+    bounds.append(row_0)
+    bounds.append(row_1)
+    bounds.append(row_2)
+    return bounds
+
+def is_within_region(position,region_bounds):
+    if position[0]>=min(region_bounds['start_x'],region_bounds['end_x']) and position[2]>=min(region_bounds['start_z'],region_bounds['end_z']) and position[0]<=max(region_bounds['start_x'],region_bounds['end_x']) and position[2]<=max(region_bounds['start_z'],region_bounds['end_z']):
+        return True
+    else:
+        return False
+
+def get_region(position,bounds):
+    if is_within_region(position,bounds[0][0]):
+        return 1
+    if is_within_region(position,bounds[0][1]):
+        return 2
+    if is_within_region(position,bounds[0][2]):
+        return 3
+    if is_within_region(position,bounds[1][0]):
+        return 4
+    if is_within_region(position,bounds[1][1]):
+        return 5
+    if is_within_region(position,bounds[1][2]):
+        return 6
+    if is_within_region(position,bounds[2][0]):
+        return 7
+    if is_within_region(position,bounds[2][1]):
+        return 8
+    if is_within_region(position,bounds[2][2]):
+        return 9
+
+def get_random_action(rotation=True):
+    # 119:Forward
+    # 115: Backward
+    # 97: Left
+    # 100: Right
+    # 276: CCW
+    # 275: CW
+
+    actions = [119, 115, 97, 100, 276, 275]
+    try:
+        if rotation:
+            rand_no = random.randint(0, 5)
+        else:
+            rand_no = random.randint(0, 3)
+        next_action = actions[rand_no]
+    except IndexError:
+        if rotation:
+            next_action = actions[5]
+        else:
+            next_action = actions[3]
+    return next_action
+
+previous_action = 0
+next_action = 0
+rotation_counter=0
+reverse_action_taken =False
+
+def reverse_action(previous_action):
+    if previous_action==119:
+        return 115
+    elif previous_action==115:
+        return 119
+    elif previous_action==97:
+        return 100
+    elif previous_action==100:
+        return 97
+    elif previous_action==276:
+        return 275
+    elif previous_action==275:
+        return 276
+    return None
+
+def generate_key_press_random(has_collided, rotation=True, confine_to_room='', current_room='', room_bounds={}, current_position=[0,0,0] ):
+    global previous_action, next_action, rotation_counter, reverse_action_taken
+    time.sleep(0.5)
+    previous_action = next_action
+    if confine_to_room!='' and current_room!=confine_to_room:
+        if not reverse_action_taken:
+            print(f'Exited Room: {confine_to_room}, Current Room: {current_room}, Reversing Last Action')
+            next_action = reverse_action(previous_action=previous_action)
+            reverse_action_taken = True
+        else:
+            print(f'Havent reached back to Room{confine_to_room}, Current Room: {current_room}, Continuing Reverse Action')
+            next_action = previous_action
+            reverse_action_taken =True
+    elif room_bounds and current_position!=[0,0,0] and not is_within_region(position=current_position,region_bounds=room_bounds):
+        if not reverse_action_taken:
+            print(f'Exited Region: {room_bounds}, Current Position: {current_position}, Reversing Last Action')
+            next_action = reverse_action(previous_action=previous_action)
+            reverse_action_taken = True
+        else:
+            print(f'Havent reached back to Region{room_bounds}, Current Position: {current_position}, Continuing Reverse Action')
+            next_action = previous_action
+            reverse_action_taken =True
+
+    elif has_collided:
+        print('Collision Detected: Taking Random Action')
+        next_action = get_random_action(rotation=rotation)
+        reverse_action_taken = False
+    else:
+        if previous_action==0:
+            next_action = 119
+        else:
+            if (previous_action==276 and rotation_counter%2==0) or (previous_action==275 and rotation_counter%2==0):
+                rotation_counter=0
+                next_action=get_random_action(rotation=rotation)
+            else:
+                print('No Collision: Moving Continuing Previous Action')
+                next_action = previous_action
+        reverse_action_taken = False
+    
+    if next_action== 275 or next_action==276:
+        rotation_counter=rotation_counter+1
+    empty_keys = np.zeros(323, dtype='i')
+    empty_keys[next_action] = 1
+    return tuple(empty_keys)
+
 def interactive_loop(sim, args):
     # initialize
     pygame.mixer.pre_init(frequency=8000, channels=1)
@@ -275,131 +526,261 @@ def interactive_loop(sim, args):
               % str([m + ('*' if m == replay_mode else '') for m in REPLAY_MODES]))
     print('***\n***')
 
-    while sim.running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                sim.running = False
+    ##########################################################
+    
+    has_collided=False
+    direction=[0.0,0.0,0.0]
+    distance=10
+    position_internal=[0.0,0.0,0.0]
+    
+    filename='positions.csv'
+    secs_per_room=20
+    positions_df=pd.read_csv(filename)
 
-        # read keys
-        keys = pygame.key.get_pressed()
-        print(type(keys),len(keys))
-        print_next_observation = False
-        if keys[K_q]:
-            break
 
-        if keys[K_o]:
-            print_next_observation = True
-        elif keys[K_n]:
-            prev_key = 'n' if prev_key is not 'n' else ''
-            if 'state_set' in args and prev_key is 'n':
-                state = args.state_set.get_next_state()
-                if not state:  # roll over to beginning
-                    print('Restarting from beginning of states file...')
-                    state = args.state_set.get_next_state()
-                id = scene_dataset + '.' + state['scene_id']
-                print('next_scene loading %s ...' % id)
-                sim.set_scene(id)
-                sim.move_to(state['start']['position'], state['start']['angle'])
-                sim.episode_info = sim.start()
-            elif prev_key is 'n':
-                scene_index = (scene_index + 1) % len(args.scene_ids)
-                scene_id = args.scene_ids[scene_index]
-                id = scene_dataset + '.' + scene_id
-                print('next_scene loading %s ...' % id)
-                sim.set_scene(id)
-                sim.episode_info = sim.start()
-        elif keys[K_r]:
-            prev_key = 'r' if prev_key is not 'r' else ''
-            if prev_key is 'r':
-                sim.episode_info = sim.reset()
-        else:
-            # Figure out action
-            action = {'name': 'idle', 'strength': 1, 'angle': math.radians(5)}
-            actions = []
-            if replay:
-                unprocessed_keypressed = any(keys)
-                if keys[K_p]:
-                    prev_key = 'p' if prev_key is not 'p' else ''
-                    if prev_key == 'p':
-                        replay_auto = not replay_auto
-                        unprocessed_keypressed = False
-                elif keys[K_e]:
-                    prev_key = 'e' if prev_key is not 'e' else ''
-                    if prev_key == 'e':
-                        replay_mode_index = (replay_mode_index + 1) % len(REPLAY_MODES)
-                        replay_mode = REPLAY_MODES[replay_mode_index]
-                        unprocessed_keypressed = False
-                        print('Replay using %s' % replay_mode)
+    for index,row in positions_df.iterrows():
+        
+        current_room=row['room_id']
+        start_position=[row['start_position_0'],row['start_position_1'],row['start_position_2']]
+        end_position=[row['end_position_0'],row['end_position_1'],row['end_position_2']]
+        start_angle=row['start_angle']
+        print('Setting Agent Position:')
+        print('Position: ', start_position)
+        print('Angle: ', start_angle)
+        sim.move_to(pos= start_position,angle=start_angle )
 
-                if replay_auto or unprocessed_keypressed:
-                    # get next action and do it
-                    rec = action_trace.next_action_record()
-                    if rec is None:
-                        # go to next trace
-                        action_trace = action_traces.next_trace()
-                        start_state = action_trace.start_state()
-                        print('start_state', start_state)
-                        sim.configure(start_state)
-                        sim.episode_info = sim.start()
+        bounds= calculate_nine_region_bounds(
+            start_position=start_position,
+            end_position=end_position
+        )
+        print('Nine Region Bounds:',bounds)
+        #region=get_region(position=end_position,bounds=bounds)
+        room_init_time= timer()
+        
+    ##########################################################
+        while sim.running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    sim.running = False
+
+            if timer()-room_init_time>secs_per_room:
+                print(f'Exploration Done in Room {current_room}')
+                break
+            # read keys
+            #keys = pygame.key.get_pressed()
+            room_bounds= {'start_x':start_position[0],'start_y':start_position[1],'start_z':start_position[2], 'end_x':end_position[0], 'end_y':end_position[1], 'end_z':end_position[2]}
+            keys = generate_key_press_random(has_collided,rotation=False,confine_to_room=current_room,current_room=current_room, room_bounds={},current_position=position_internal)
+            #print(type(keys),len(keys))
+            print_next_observation = False
+            if keys[K_q]:
+                break
+
+            ##################################
+            if keys[K_x]:
+                print('In Room: ',current_room)
+                if Path(filename).is_file():
+                    print('Positions File Exists')
+                    df = pd.read_csv(filename)
+                    if not df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room)].empty:
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'start_position_0']=position_internal[0]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'start_position_1']=position_internal[1]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'start_position_2']=position_internal[2]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'start_angle']=angle_internal
+                        df.to_csv(filename, index=False)
                     else:
-                        if replay_mode == 'actions':
-                            actnames = rec['actions'].split('+')
-                            for actname in actnames:
-                                if actname != 'reset':
-                                    act = copy.copy(action)
-                                    act['name'] = actname
-                                    actions.append(act)
-                        elif replay_mode == 'positions':
-                            sim.move_to([rec['px'], rec['py'], rec['pz']], rec['rotation'])
-            else:
-                if keys[K_w]:
-                    action['name'] = 'forwards'
-                elif keys[K_s]:
-                    action['name'] = 'backwards'
-                elif keys[K_LEFT]:
-                    action['name'] = 'turnLeft'
-                elif keys[K_RIGHT]:
-                    action['name'] = 'turnRight'
-                elif keys[K_a]:
-                    action['name'] = 'strafeLeft'
-                elif keys[K_d]:
-                    action['name'] = 'strafeRight'
-                elif keys[K_UP]:
-                    action['name'] = 'lookUp'
-                elif keys[K_DOWN]:
-                    action['name'] = 'lookDown'
+                        position_data= {
+                            'scene_id': args['scene_ids'][0],
+                            'room_id':current_room,
+                            'start_position_0': [position_internal[0]],
+                            'start_position_1': [position_internal[1]],
+                            'start_position_2': [position_internal[2]],
+                            'start_angle': [angle_internal]
+                        }
+                        df2=pd.DataFrame(position_data)
+                        df=df.append(df2,ignore_index=True)
+                        df.to_csv(filename, index=False)
                 else:
-                    action['name'] = 'idle'
-                actions = [action]
+                    print('Positions File does not exist')
+                    position_data= {
+                        'scene_id': args['scene_ids'][0],
+                        'room_id':current_room,
+                        'start_position_0': [position_internal[0]],
+                        'start_position_1': [position_internal[1]],
+                        'start_position_2': [position_internal[2]],
+                        'start_angle': [angle_internal]
+                    }
+                    df=pd.DataFrame(position_data)
+                    df.to_csv(filename, index=False)
+            
+            if keys[K_c]:
+                print('In Room: ',current_room)
+                if Path(filename).is_file():
+                    print('Positions File Exists')
+                    df = pd.read_csv(filename)
+                    if not df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room)].empty:
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'end_position_0']=position_internal[0]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'end_position_1']=position_internal[1]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'end_position_2']=position_internal[2]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'end_angle']=angle_internal
+                        df.to_csv(filename, index=False)
+                    else:
+                        position_data= {
+                            'scene_id': args['scene_ids'][0],
+                            'room_id':current_room,
+                            'start_position_0': [position_internal[0]],
+                            'start_position_1': [position_internal[1]],
+                            'start_position_2': [position_internal[2]],
+                            'start_angle': [angle_internal]
+                        }
+                        df2=pd.DataFrame(position_data)
+                        df=df.append(df2,ignore_index=True)
+                        df.to_csv(filename, index=False)
+                else:
+                    print('Positions File does not exist')
+                    position_data= {
+                        'scene_id': args['scene_ids'][0],
+                        'room_id':current_room,
+                        'end_position_0': [position_internal[0]],
+                        'end_position_1': [position_internal[1]],
+                        'end_position_2': [position_internal[2]],
+                        'end_angle': [angle_internal]
+                    }
+                    df=pd.DataFrame(position_data)
+                    df.to_csv(filename, index=False)
+            ##################################
+            if keys[K_o]:
+                print_next_observation = True
+            elif keys[K_n]:
+                prev_key = 'n' if prev_key is not 'n' else ''
+                if 'state_set' in args and prev_key is 'n':
+                    state = args.state_set.get_next_state()
+                    if not state:  # roll over to beginning
+                        print('Restarting from beginning of states file...')
+                        state = args.state_set.get_next_state()
+                    id = scene_dataset + '.' + state['scene_id']
+                    print('next_scene loading %s ...' % id)
+                    sim.set_scene(id)
+                    sim.move_to(state['start']['position'], state['start']['angle'])
+                    sim.episode_info = sim.start()
+                elif prev_key is 'n':
+                    scene_index = (scene_index + 1) % len(args.scene_ids)
+                    scene_id = args.scene_ids[scene_index]
+                    id = scene_dataset + '.' + scene_id
+                    print('next_scene loading %s ...' % id)
+                    sim.set_scene(id)
+                    sim.episode_info = sim.start()
+            elif keys[K_r]:
+                prev_key = 'r' if prev_key is not 'r' else ''
+                if prev_key is 'r':
+                    sim.episode_info = sim.reset()
+            else:
+                # Figure out action
+                action = {'name': 'idle', 'strength': 1, 'angle': math.radians(5)}
+                actions = []
+                if replay:
+                    unprocessed_keypressed = any(keys)
+                    if keys[K_p]:
+                        prev_key = 'p' if prev_key is not 'p' else ''
+                        if prev_key == 'p':
+                            replay_auto = not replay_auto
+                            unprocessed_keypressed = False
+                    elif keys[K_e]:
+                        prev_key = 'e' if prev_key is not 'e' else ''
+                        if prev_key == 'e':
+                            replay_mode_index = (replay_mode_index + 1) % len(REPLAY_MODES)
+                            replay_mode = REPLAY_MODES[replay_mode_index]
+                            unprocessed_keypressed = False
+                            print('Replay using %s' % replay_mode)
 
-        # step simulator and get observation
-        response = sim.step(actions, 1)
-        if response is None:
-            break
+                    if replay_auto or unprocessed_keypressed:
+                        # get next action and do it
+                        rec = action_trace.next_action_record()
+                        if rec is None:
+                            # go to next trace
+                            action_trace = action_traces.next_trace()
+                            start_state = action_trace.start_state()
+                            print('start_state', start_state)
+                            sim.configure(start_state)
+                            sim.episode_info = sim.start()
+                        else:
+                            if replay_mode == 'actions':
+                                actnames = rec['actions'].split('+')
+                                for actname in actnames:
+                                    if actname != 'reset':
+                                        act = copy.copy(action)
+                                        act['name'] = actname
+                                        actions.append(act)
+                            elif replay_mode == 'positions':
+                                sim.move_to([rec['px'], rec['py'], rec['pz']], rec['rotation'])
+                else:
+                    if keys[K_w]:
+                        action['name'] = 'forwards'
+                        print('Moving Forward')
+                    elif keys[K_s]:
+                        action['name'] = 'backwards'
+                        print('Moving Backward')
+                    elif keys[K_LEFT]:
+                        action['name'] = 'turnLeft'
+                        print('Rotating CCW')
+                    elif keys[K_RIGHT]:
+                        action['name'] = 'turnRight'
+                        print('Rotating CW')
+                    elif keys[K_a]:
+                        action['name'] = 'strafeLeft'
+                        print('Moving Left')
+                    elif keys[K_d]:
+                        action['name'] = 'strafeRight'
+                        print('Moving Right')
+                    elif keys[K_UP]:
+                        action['name'] = 'lookUp'
+                    elif keys[K_DOWN]:
+                        action['name'] = 'lookDown'
+                    else:
+                        action['name'] = 'idle'
+                    actions = [action]
 
-        display_episode_info(sim.episode_info, display_surf, camera_outputs['goal'], show_goals=args.show_goals)
+            # step simulator and get observation
+            response = sim.step(actions, 1)
+            if response is None:
+                break
 
-        # Handle map
-        observation = response.get('observation')
-        map = observation.get('map')
-        if map is not None:
-            # TODO: handle multiple maps
-            if isinstance(map, list):
-                map = map[0]
-            config = camera_outputs['map']
-            img = map['data']
-            rw = map['shape'][0] + config.get('position')[0]
-            rh = map['shape'][1] + config.get('position')[1]
-            display_surf, resized = ensure_size(display_surf, rw, rh)
-            if resized:
-                write_text(display_surf, 'map', position = label_positions['map'])
-            blit_img_to_surf(img, display_surf, config.get('position'), surf_key='map')
+            display_episode_info(sim.episode_info, display_surf, camera_outputs['goal'], show_goals=args.show_goals)
 
-        # Handle other response
-        display_response(response, display_surf, camera_outputs['curr'], print_observation=print_next_observation, write_video=True)
-        pygame.display.flip()
-        num_frames += 1
-        clock.tick(30)  # constraint to max 30 fps
+            # Handle map
+            observation = response.get('observation')
+            
+            # if not position==[] and not orientation_angle==[]:
+            #     print('Restoring Saved Position: ',position, orientation_angle)
+            #     sim.move_to(position,angle=orientation_angle,tilt=0)
+
+            position_internal = response['info']['agent_state']['position']
+            orientation_internal = response['info']['agent_state']['orientation']
+            angle_internal = get_angle_rad(orientation_internal[2], orientation_internal[0])
+            current_room=observation['roomInfo']['id']
+            has_collided = observation['collision']
+            direction = observation['measurements']['direction_to_goal']
+            # print('Position: ',response['info']['agent_state']['position'])
+            # print('Orientation: ',response['info']['agent_state']['orientation'])
+            ###########################
+            map = observation.get('map')
+            if map is not None:
+                # TODO: handle multiple maps
+                if isinstance(map, list):
+                    map = map[0]
+                config = camera_outputs['map']
+                img = map['data']
+                rw = map['shape'][0] + config.get('position')[0]
+                rh = map['shape'][1] + config.get('position')[1]
+                display_surf, resized = ensure_size(display_surf, rw, rh)
+                if resized:
+                    write_text(display_surf, 'map', position = label_positions['map'])
+                blit_img_to_surf(img, display_surf, config.get('position'), surf_key='map')
+
+            # Handle other response
+            display_response(response, display_surf, camera_outputs['curr'], print_observation=print_next_observation, write_video=True)
+            pygame.display.flip()
+            num_frames += 1
+            clock.tick(30)  # constraint to max 30 fps
 
     # NOTE: log_action_trace handled by javascript side
     # if args.log_action_trace:
