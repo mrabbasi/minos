@@ -9,7 +9,10 @@ import pygame
 from pygame.locals import *
 from timeit import default_timer as timer
 import traceback
-import random, time
+import random
+import time
+import os
+from PIL import Image
 
 from minos.lib import common
 from minos.config.sim_args import parse_sim_args
@@ -191,113 +194,314 @@ def write_text(display_surf, text, position, font=None, fontname='monospace', fo
     else:
         display_surf.blit(text_surface, position)
 
-def calculate_nine_region_bounds(start_position, end_position):
-    x_distance=end_position[0]-start_position[0]
-    x_distance_diff=x_distance/3
-    z_distance=end_position[2]-start_position[2]
-    z_distance_diff=z_distance/3
+def get_observed_image(observation):
+    current_image_shape = observation['sensors']['color']['data'].shape
+    current_image_array = np.reshape(observation['sensors']['color']['data'], current_image_shape)
+    current_image = Image.frombytes('RGBA', (current_image_shape[0], current_image_shape[1]), current_image_array)
+    return current_image
+
+def calculate_nine_region_bounds(top_left, top_right, bottom_left, bottom_right):
+    top_x_distance=abs(top_right[0]-top_left[0])
+    top_x_distance_diff=top_x_distance/3
+    bottom_x_distance=abs(bottom_right[0]-bottom_left[0])
+    bottom_x_distance_diff=bottom_x_distance/3
+    
+    top_z_distance=abs(top_right[2]-top_left[2])
+    top_z_distance_diff=top_z_distance/3
+    bottom_z_distance=abs(bottom_right[2]-bottom_left[2])
+    bottom_z_distance_diff=bottom_z_distance/3
+
+    top_bottom_left_x_distance=abs(top_left[0]-bottom_left[0])
+    top_bottom_left_x_distance_diff=top_bottom_left_x_distance/3
+    top_bottom_right_x_distance=abs(top_right[0]-bottom_right[0])
+    top_bottom_right_x_distance_diff=top_bottom_right_x_distance/3
+
+    top_bottom_left_z_distance=abs(top_left[2]-bottom_left[2])
+    top_bottom_left_z_distance_diff=top_bottom_left_z_distance/3
+    top_bottom_right_z_distance=abs(top_right[2]-bottom_right[2])
+    top_bottom_right_z_distance_diff=top_bottom_right_z_distance/3
 
     bounds=[]
     row_0=[]
     row_1=[]
     row_2=[]
+
+    top_right_temp = {
+        'x':(top_left[0]+top_x_distance_diff) if top_right[0]>top_left[0] else (top_left[0]-top_x_distance_diff),
+        'y':top_left[1],
+        'z':(top_left[2]+top_z_distance_diff) if top_right[2]>top_left[2] else (top_left[2]-top_z_distance_diff)
+    }
+    bottom_left_temp = {
+        'x':(top_left[0]+top_bottom_left_x_distance_diff) if bottom_left[0]>top_left[0] else (top_left[0]-top_bottom_left_x_distance_diff),
+        'y':top_left[1],
+        'z':(top_left[2]+top_bottom_left_z_distance_diff) if bottom_left[2]>top_left[2] else (top_left[2]-top_bottom_left_z_distance_diff)
+    }
+    
     row_0.append(
         {
-            'start_x':start_position[0],
-            'start_y':start_position[1],
-            'start_z':start_position[2],
+            'top_left_x':top_left[0],
+            'top_left_y':top_left[1],
+            'top_left_z':top_left[2],
+
+            'top_right_x':top_right_temp['x'],
+            'top_right_y':top_right_temp['y'],
+            'top_right_z':top_right_temp['z'],
         
-            'end_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
-            'end_y':start_position[1],
-            'end_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff)
+            'bottom_left_x':bottom_left_temp['x'],
+            'bottom_left_y':bottom_left_temp['y'],
+            'bottom_left_z':bottom_left_temp['z'],
+
+            'bottom_right_x':(bottom_left_temp['x']+top_x_distance_diff) if top_right[0]>top_left[0] else (bottom_left_temp['x']-top_x_distance_diff),
+            'bottom_right_y':top_left[1],
+            'bottom_right_z':(top_right_temp['z']+top_bottom_left_z_distance_diff) if bottom_left[2]>top_left[2] else (top_right_temp['z']-top_bottom_left_z_distance_diff)
         }
     )
+
+    top_right_temp = {
+        'x':(row_0[0]['top_right_x']+top_x_distance_diff) if top_right[0]>top_left[0] else (row_0[0]['top_right_x']-top_x_distance_diff),
+        'y':top_left[1],
+        'z':(row_0[0]['top_right_z']+top_z_distance_diff) if top_right[2]>top_left[2] else (row_0[0]['top_right_z']-top_z_distance_diff)
+    }
+    bottom_left_temp = {
+        'x':row_0[0]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_0[0]['bottom_right_z']
+    }
+
     row_0.append(
         {
-            'start_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
-            'start_y':start_position[1],
-            'start_z':start_position[2],
+            'top_left_x':row_0[0]['top_right_x'],
+            'top_left_y':top_left[1],
+            'top_left_z':row_0[0]['top_right_z'],
             
-            'end_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
-            'end_y':start_position[1],
-            'end_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff)
+            'top_right_x':top_right_temp['x'],
+            'top_right_y':top_right_temp['y'],
+            'top_right_z':top_right_temp['z'],
+        
+            'bottom_left_x':bottom_left_temp['x'],
+            'bottom_left_y':bottom_left_temp['y'],
+            'bottom_left_z':bottom_left_temp['z'],
+
+            'bottom_right_x':(bottom_left_temp['x']+top_x_distance_diff) if top_right[0]>top_left[0] else (bottom_left_temp['x']-top_x_distance_diff),
+            'bottom_right_y':top_left[1],
+            'bottom_right_z':(top_right_temp['z']+top_bottom_right_z_distance_diff) if bottom_right[2]>top_right[2] else (top_right_temp['z']-top_bottom_right_z_distance_diff)
         }
     )
+    
+    top_right_temp = {
+        'x':top_right[0],
+        'y':top_left[1],
+        'z':top_right[2]
+    }
+    bottom_left_temp = {
+        'x':row_0[1]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_0[1]['bottom_right_z']
+    }
+
     row_0.append(
         {
-            'start_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
-            'start_y':start_position[1],
-            'start_z':start_position[2],
-            
-            'end_x':end_position[0],
-            'end_y':start_position[1],
-            'end_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff)
-        }
-    )
-    row_1.append(
-        {
-            'start_x':start_position[0],
-            'start_y':start_position[1],
-            'start_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff),
+            'top_left_x':row_0[1]['top_right_x'],
+            'top_left_y':top_left[1],
+            'top_left_z':row_0[1]['top_right_z'],
 
-            'end_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
-            'end_y':start_position[1],
-            'end_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff)
-        }
-    )
-    row_1.append(
-        {
-            'start_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
-            'start_y':start_position[1],
-            'start_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff),
-            
-            'end_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
-            'end_y':start_position[1],
-            'end_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff)
-        }
-    )
-    row_1.append(
-        {
-            'start_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
-            'start_y':start_position[1],
-            'start_z':(start_position[2]+z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-z_distance_diff),
+            'top_right_x':top_right_temp['x'],
+            'top_right_y':top_right_temp['y'],
+            'top_right_z':top_right_temp['z'],
 
-            'end_x':end_position[0],
-            'end_y':start_position[1],
-            'end_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff)
+            'bottom_left_x':bottom_left_temp['x'],
+            'bottom_left_y':bottom_left_temp['y'],
+            'bottom_left_z':bottom_left_temp['z'],
+            
+            'bottom_right_x':(bottom_left_temp['x']+top_x_distance_diff) if top_right[0]>top_left[0] else (bottom_left_temp['x']-top_x_distance_diff),
+            'bottom_right_y':top_left[1],
+            'bottom_right_z':(top_right_temp['z']+top_bottom_right_z_distance_diff) if bottom_right[2]>top_right[2] else (top_right_temp['z']-top_bottom_right_z_distance_diff)
         }
     )
-    row_2.append(
+
+    top_right_temp = {
+        'x':row_0[0]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_0[0]['bottom_right_z']
+    }
+    bottom_left_temp = {
+        'x':(row_0[0]['bottom_left_x']+top_bottom_left_x_distance_diff) if bottom_left[0]>top_left[0] else (row_0[0]['bottom_left_x']-top_bottom_left_x_distance_diff),
+        'y':top_left[1],
+        'z':(row_0[0]['bottom_left_z']+top_bottom_left_z_distance_diff) if bottom_left[2]>top_left[2] else (row_0[0]['bottom_left_z']-top_bottom_left_z_distance_diff)
+    }
+
+    row_1.append(
         {
-            'start_x':start_position[0],
-            'start_y':start_position[1],
-            'start_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff),
-            
-            'end_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
-            'end_y':start_position[1],
-            'end_z':end_position[2]
+            'top_left_x':row_0[0]['bottom_left_x'],
+            'top_left_y':top_left[1],
+            'top_left_z':row_0[0]['bottom_left_z'],
+
+            'top_right_x':top_right_temp['x'],
+            'top_right_y':top_right_temp['y'],
+            'top_right_z':top_right_temp['z'],
+
+            'bottom_left_x':bottom_left_temp['x'],
+            'bottom_left_y':bottom_left_temp['y'],
+            'bottom_left_z':bottom_left_temp['z'],
+
+            'bottom_right_x':(bottom_left_temp['x']+top_x_distance_diff) if top_right[0]>top_left[0] else (bottom_left_temp['x']-top_x_distance_diff),
+            'bottom_right_y':top_left[1],
+            'bottom_right_z':(top_right_temp['z']+top_bottom_left_z_distance_diff) if bottom_left[2]>top_left[2] else (top_right_temp['z']-top_bottom_left_z_distance_diff)
         }
     )
-    row_2.append(
+
+    top_right_temp = {
+        'x':row_0[1]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_0[1]['bottom_right_z']
+    }
+    bottom_left_temp = {
+        'x':row_1[0]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_1[0]['bottom_right_z']
+    }
+
+    row_1.append(
         {
-            'start_x':(start_position[0]+x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-x_distance_diff),
-            'start_y':start_position[1],
-            'start_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff),
+            'top_left_x':row_1[0]['top_right_x'],
+            'top_left_y':top_left[1],
+            'top_left_z':row_1[0]['top_right_z'],
             
-            'end_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
-            'end_y':start_position[1],
-            'end_z':end_position[2]
+            'top_right_x':top_right_temp['x'],
+            'top_right_y':top_right_temp['y'],
+            'top_right_z':top_right_temp['z'],
+        
+            'bottom_left_x':bottom_left_temp['x'],
+            'bottom_left_y':bottom_left_temp['y'],
+            'bottom_left_z':bottom_left_temp['z'],
+
+            'bottom_right_x':(bottom_left_temp['x']+bottom_x_distance_diff) if bottom_right[0]>bottom_left[0] else (bottom_left_temp['x']-bottom_x_distance_diff),
+            'bottom_right_y':top_left[1],
+            'bottom_right_z':(top_right_temp['z']+top_bottom_right_z_distance_diff) if bottom_right[2]>top_right[2] else (top_right_temp['z']-top_bottom_right_z_distance_diff)
         }
     )
+
+    top_right_temp = {
+        'x':row_0[2]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_0[2]['bottom_right_z']
+    }
+    bottom_left_temp = {
+        'x':row_1[1]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_1[1]['bottom_right_z']
+    }
+
+    row_1.append(
+        {
+            'top_left_x':row_1[1]['top_right_x'],
+            'top_left_y':top_left[1],
+            'top_left_z':row_1[1]['top_right_z'],
+
+            'top_right_x':top_right_temp['x'],
+            'top_right_y':top_right_temp['y'],
+            'top_right_z':top_right_temp['z'],
+        
+            'bottom_left_x':bottom_left_temp['x'],
+            'bottom_left_y':bottom_left_temp['y'],
+            'bottom_left_z':bottom_left_temp['z'],
+
+            'bottom_right_x':(bottom_left_temp['x']+bottom_x_distance_diff) if bottom_right[0]>bottom_left[0] else (bottom_left_temp['x']-bottom_x_distance_diff),
+            'bottom_right_y':top_left[1],
+            'bottom_right_z':(top_right_temp['z']+top_bottom_right_z_distance_diff) if bottom_right[2]>top_right[2] else (top_right_temp['z']-top_bottom_right_z_distance_diff)
+        }
+    )
+
+    top_right_temp = {
+        'x':row_1[0]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_1[0]['bottom_right_z']
+    }
+    bottom_left_temp = {
+        'x':bottom_left[0],
+        'y':top_left[1],
+        'z':bottom_left[2]
+    }
+
     row_2.append(
         {
-            'start_x':(start_position[0]+2*x_distance_diff) if end_position[0]>start_position[0] else (start_position[0]-2*x_distance_diff),
-            'start_y':start_position[1],
-            'start_z':(start_position[2]+2*z_distance_diff) if end_position[2]>start_position[2] else (start_position[2]-2*z_distance_diff),
+            'top_left_x':row_1[0]['bottom_left_x'],
+            'top_left_y':top_left[1],
+            'top_left_z':row_1[0]['bottom_left_z'],
             
-            'end_x':end_position[0],
-            'end_y':start_position[1],
-            'end_z':end_position[2]
+            'top_right_x':top_right_temp['x'],
+            'top_right_y':top_right_temp['y'],
+            'top_right_z':top_right_temp['z'],
+        
+            'bottom_left_x':bottom_left_temp['x'],
+            'bottom_left_y':bottom_left_temp['y'],
+            'bottom_left_z':bottom_left_temp['z'],
+
+            'bottom_right_x':(bottom_left_temp['x']+bottom_x_distance_diff) if bottom_right[0]>bottom_left[0] else (bottom_left_temp['x']-bottom_x_distance_diff),
+            'bottom_right_y':top_left[1],
+            'bottom_right_z':(bottom_left_temp['z']+bottom_z_distance_diff) if bottom_right[2]>bottom_left[2] else (bottom_left_temp['z']-bottom_z_distance_diff)
+        }
+    )
+
+    top_right_temp = {
+        'x':row_1[1]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_1[1]['bottom_right_z']
+    }
+    bottom_left_temp = {
+        'x':row_2[0]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_2[0]['bottom_right_z']
+    }
+
+    row_2.append(
+        {
+            'top_left_x':row_2[0]['top_right_x'],
+            'top_left_y':top_left[1],
+            'top_left_z':row_2[0]['top_right_z'],
+            
+            'top_right_x':top_right_temp['x'],
+            'top_right_y':top_right_temp['y'],
+            'top_right_z':top_right_temp['z'],
+        
+            'bottom_left_x':bottom_left_temp['x'],
+            'bottom_left_y':bottom_left_temp['y'],
+            'bottom_left_z':bottom_left_temp['z'],
+
+            'bottom_right_x':(bottom_left_temp['x']+bottom_x_distance_diff) if bottom_right[0]>bottom_left[0] else (bottom_left_temp['x']-bottom_x_distance_diff),
+            'bottom_right_y':top_left[1],
+            'bottom_right_z':(bottom_left_temp['z']+bottom_z_distance_diff) if bottom_right[2]>bottom_left[2] else (bottom_left_temp['z']-bottom_z_distance_diff)
+        }
+    )
+
+    top_right_temp = {
+        'x':row_1[2]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_1[2]['bottom_right_z']
+    }
+    bottom_left_temp = {
+        'x':row_2[1]['bottom_right_x'],
+        'y':top_left[1],
+        'z':row_2[1]['bottom_right_z']
+    }
+
+    row_2.append(
+        {
+            'top_left_x':row_2[1]['top_right_x'],
+            'top_left_y':top_left[1],
+            'top_left_z':row_2[1]['top_right_z'],
+            
+            'top_right_x':top_right_temp['x'],
+            'top_right_y':top_right_temp['y'],
+            'top_right_z':top_right_temp['z'],
+        
+            'bottom_left_x':bottom_left_temp['x'],
+            'bottom_left_y':bottom_left_temp['y'],
+            'bottom_left_z':bottom_left_temp['z'],
+
+            'bottom_right_x':bottom_right[0],
+            'bottom_right_y':top_left[1],
+            'bottom_right_z':bottom_right[2]
         }
     )
     bounds.append(row_0)
@@ -306,7 +510,7 @@ def calculate_nine_region_bounds(start_position, end_position):
     return bounds
 
 def is_within_region(position,region_bounds):
-    if position[0]>=min(region_bounds['start_x'],region_bounds['end_x']) and position[2]>=min(region_bounds['start_z'],region_bounds['end_z']) and position[0]<=max(region_bounds['start_x'],region_bounds['end_x']) and position[2]<=max(region_bounds['start_z'],region_bounds['end_z']):
+    if position[0]>=min(region_bounds['top_left_x'],region_bounds['top_right_x'],region_bounds['bottom_left_x'],region_bounds['bottom_right_x']) and position[2]>=min(region_bounds['top_left_z'],region_bounds['top_right_z'],region_bounds['bottom_left_z'],region_bounds['bottom_right_z']) and position[0]<=max(region_bounds['top_left_x'],region_bounds['top_right_x'],region_bounds['bottom_left_x'],region_bounds['bottom_right_x']) and position[2]<=max(region_bounds['top_left_z'],region_bounds['top_right_z'],region_bounds['bottom_left_z'],region_bounds['bottom_right_z']):
         return True
     else:
         return False
@@ -417,6 +621,29 @@ def generate_key_press_random(has_collided, rotation=True, confine_to_room='', c
     empty_keys = np.zeros(323, dtype='i')
     empty_keys[next_action] = 1
     return tuple(empty_keys)
+
+def save_observation_data(image_save_directory,data_csv_name,observation,image_counter,scene_id,position,bounds):
+    if not os.path.isdir(image_save_directory):
+        os.mkdir(image_save_directory)
+    current_image = get_observed_image(observation)
+    full_image_path = image_save_directory+'/'+str(image_counter)+'.png'
+    if os.path.isfile(Path(image_save_directory)/data_csv_name):
+        dataset_df = pd.read_csv(Path(image_save_directory)/data_csv_name)
+    else:
+        dataset_df = pd.DataFrame()
+    print('Position: ',position)
+    print('Region: ',get_region(position=position,bounds=bounds))
+    data={
+        'scene_id': scene_id,
+        'room': observation['roomInfo']['id'],
+        'region': get_region(position=position,bounds=bounds),
+        'image_path': full_image_path
+    }
+    if data['region'] is not None:
+        current_image.save(full_image_path)
+        dataset_df=dataset_df.append(data,ignore_index=True)
+        dataset_df.to_csv(Path(image_save_directory)/data_csv_name,index=False)
+    
 
 def interactive_loop(sim, args):
     # initialize
@@ -529,32 +756,56 @@ def interactive_loop(sim, args):
     ##########################################################
     
     has_collided=False
-    direction=[0.0,0.0,0.0]
-    distance=10
+    image_counter = 0
     position_internal=[0.0,0.0,0.0]
     
-    filename='positions.csv'
-    secs_per_room=20
-    positions_df=pd.read_csv(filename)
+    positions_csv_name='positions.csv'
+    data_csv_name='dataset.csv'
+    image_save_directory='/home/sohail/dataset-images'
+    secs_per_room=210
+    positions_df=pd.read_csv(positions_csv_name)
 
 
     for index,row in positions_df.iterrows():
         
         current_room=row['room_id']
-        start_position=[row['start_position_0'],row['start_position_1'],row['start_position_2']]
-        end_position=[row['end_position_0'],row['end_position_1'],row['end_position_2']]
-        start_angle=row['start_angle']
+        top_left=[row['top_left_x'],row['top_left_y'],row['top_left_z']]
+        top_right=[row['top_right_x'],row['top_right_y'],row['top_right_z']]
+        bottom_left=[row['bottom_left_x'],row['bottom_left_y'],row['bottom_left_z']]
+        bottom_right=[row['bottom_right_x'],row['bottom_right_y'],row['bottom_right_z']]
+        start_angle=row['top_left_angle']
         print('Setting Agent Position:')
-        print('Position: ', start_position)
+        print('Position: ', top_left)
         print('Angle: ', start_angle)
-        sim.move_to(pos= start_position,angle=start_angle )
+        sim.move_to(pos= top_left,angle=start_angle )
 
         bounds= calculate_nine_region_bounds(
-            start_position=start_position,
-            end_position=end_position
+            top_left=top_left,
+            top_right=top_right,
+            bottom_left=bottom_left,
+            bottom_right=bottom_right
         )
         print('Nine Region Bounds:',bounds)
+        data_x = [ row['top_left_x'], row['top_right_x'], row['bottom_left_x'], row['bottom_right_x'] ]
+        data_y = [ row['top_left_z'], row['top_right_z'], row['bottom_left_z'], row['bottom_right_z'] ]
+        colors = ['r', 'g', 'b', 'y' ]
+        for i in range(0,3):
+            for j in range(0,3):
+                data_x.append(bounds[i][j]['top_left_x'])
+                data_y.append(bounds[i][j]['top_left_z'])
+                data_x.append(bounds[i][j]['top_right_x'])
+                data_y.append(bounds[i][j]['top_right_z'])
+                data_x.append(bounds[i][j]['bottom_left_x'])
+                data_y.append(bounds[i][j]['bottom_left_z'])
+                data_x.append(bounds[i][j]['bottom_right_x'])
+                data_y.append(bounds[i][j]['bottom_right_z'])
+                colors.append('r')
+                colors.append('g')
+                colors.append('b')
+                colors.append('y')
         #region=get_region(position=end_position,bounds=bounds)
+        #plt.scatter(data_x, data_y, color=colors)
+        #plt.show()
         room_init_time= timer()
         
     ##########################################################
@@ -567,9 +818,9 @@ def interactive_loop(sim, args):
                 print(f'Exploration Done in Room {current_room}')
                 break
             # read keys
-            #keys = pygame.key.get_pressed()
-            room_bounds= {'start_x':start_position[0],'start_y':start_position[1],'start_z':start_position[2], 'end_x':end_position[0], 'end_y':end_position[1], 'end_z':end_position[2]}
-            keys = generate_key_press_random(has_collided,rotation=False,confine_to_room=current_room,current_room=current_room, room_bounds={},current_position=position_internal)
+            keys = pygame.key.get_pressed()
+            #room_bounds= {'start_x':top_left[0],'start_y':top_left[1],'start_z':top_left[2], 'end_x':bottom_right[0], 'end_y':bottom_right[1], 'end_z':bottom_right[2]}
+            #keys = generate_key_press_random(has_collided,rotation=False,confine_to_room=current_room,current_room=current_room, room_bounds={},current_position=position_internal)
             #print(type(keys),len(keys))
             print_next_observation = False
             if keys[K_q]:
@@ -578,75 +829,147 @@ def interactive_loop(sim, args):
             ##################################
             if keys[K_x]:
                 print('In Room: ',current_room)
-                if Path(filename).is_file():
+                if Path(positions_csv_name).is_file():
                     print('Positions File Exists')
-                    df = pd.read_csv(filename)
+                    df = pd.read_csv(positions_csv_name)
                     if not df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room)].empty:
-                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'start_position_0']=position_internal[0]
-                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'start_position_1']=position_internal[1]
-                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'start_position_2']=position_internal[2]
-                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'start_angle']=angle_internal
-                        df.to_csv(filename, index=False)
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'top_left_x']=position_internal[0]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'top_left_y']=position_internal[1]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'top_left_z']=position_internal[2]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'top_left_angle']=angle_internal
+                        df.to_csv(positions_csv_name, index=False)
                     else:
                         position_data= {
                             'scene_id': args['scene_ids'][0],
                             'room_id':current_room,
-                            'start_position_0': [position_internal[0]],
-                            'start_position_1': [position_internal[1]],
-                            'start_position_2': [position_internal[2]],
-                            'start_angle': [angle_internal]
+                            'top_left_x': [position_internal[0]],
+                            'top_left_y': [position_internal[1]],
+                            'top_left_z': [position_internal[2]],
+                            'top_left_angle': [angle_internal]
                         }
                         df2=pd.DataFrame(position_data)
                         df=df.append(df2,ignore_index=True)
-                        df.to_csv(filename, index=False)
+                        df.to_csv(positions_csv_name, index=False)
                 else:
                     print('Positions File does not exist')
                     position_data= {
                         'scene_id': args['scene_ids'][0],
                         'room_id':current_room,
-                        'start_position_0': [position_internal[0]],
-                        'start_position_1': [position_internal[1]],
-                        'start_position_2': [position_internal[2]],
-                        'start_angle': [angle_internal]
+                        'top_left_x': [position_internal[0]],
+                        'top_left_y': [position_internal[1]],
+                        'top_left_z': [position_internal[2]],
+                        'top_left_angle': [angle_internal]
                     }
                     df=pd.DataFrame(position_data)
-                    df.to_csv(filename, index=False)
+                    df.to_csv(positions_csv_name, index=False)
             
             if keys[K_c]:
                 print('In Room: ',current_room)
-                if Path(filename).is_file():
+                if Path(positions_csv_name).is_file():
                     print('Positions File Exists')
-                    df = pd.read_csv(filename)
+                    df = pd.read_csv(positions_csv_name)
                     if not df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room)].empty:
-                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'end_position_0']=position_internal[0]
-                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'end_position_1']=position_internal[1]
-                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'end_position_2']=position_internal[2]
-                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'end_angle']=angle_internal
-                        df.to_csv(filename, index=False)
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'top_right_x']=position_internal[0]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'top_right_y']=position_internal[1]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'top_right_z']=position_internal[2]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'top_right_angle']=angle_internal
+                        df.to_csv(positions_csv_name, index=False)
                     else:
                         position_data= {
                             'scene_id': args['scene_ids'][0],
                             'room_id':current_room,
-                            'start_position_0': [position_internal[0]],
-                            'start_position_1': [position_internal[1]],
-                            'start_position_2': [position_internal[2]],
-                            'start_angle': [angle_internal]
+                            'top_right_x': [position_internal[0]],
+                            'top_right_y': [position_internal[1]],
+                            'top_right_z': [position_internal[2]],
+                            'top_right_angle': [angle_internal]
                         }
                         df2=pd.DataFrame(position_data)
                         df=df.append(df2,ignore_index=True)
-                        df.to_csv(filename, index=False)
+                        df.to_csv(positions_csv_name, index=False)
                 else:
                     print('Positions File does not exist')
                     position_data= {
                         'scene_id': args['scene_ids'][0],
                         'room_id':current_room,
-                        'end_position_0': [position_internal[0]],
-                        'end_position_1': [position_internal[1]],
-                        'end_position_2': [position_internal[2]],
-                        'end_angle': [angle_internal]
+                        'top_right_x': [position_internal[0]],
+                        'top_right_y': [position_internal[1]],
+                        'top_right_z': [position_internal[2]],
+                        'top_right_angle': [angle_internal]
                     }
                     df=pd.DataFrame(position_data)
-                    df.to_csv(filename, index=False)
+                    df.to_csv(positions_csv_name, index=False)
+
+            if keys[K_v]:
+                print('In Room: ',current_room)
+                if Path(positions_csv_name).is_file():
+                    print('Positions File Exists')
+                    df = pd.read_csv(positions_csv_name)
+                    if not df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room)].empty:
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'bottom_left_x']=position_internal[0]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'bottom_left_y']=position_internal[1]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'bottom_left_z']=position_internal[2]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'bottom_left_angle']=angle_internal
+                        df.to_csv(positions_csv_name, index=False)
+                    else:
+                        position_data= {
+                            'scene_id': args['scene_ids'][0],
+                            'room_id':current_room,
+                            'bottom_left_x': [position_internal[0]],
+                            'bottom_left_y': [position_internal[1]],
+                            'bottom_left_z': [position_internal[2]],
+                            'bottom_left_angle': [angle_internal]
+                        }
+                        df2=pd.DataFrame(position_data)
+                        df=df.append(df2,ignore_index=True)
+                        df.to_csv(positions_csv_name, index=False)
+                else:
+                    print('Positions File does not exist')
+                    position_data= {
+                        'scene_id': args['scene_ids'][0],
+                        'room_id':current_room,
+                        'bottom_left_x': [position_internal[0]],
+                        'bottom_left_y': [position_internal[1]],
+                        'bottom_left_z': [position_internal[2]],
+                        'bottom_left_angle': [angle_internal]
+                    }
+                    df=pd.DataFrame(position_data)
+                    df.to_csv(positions_csv_name, index=False)
+            
+            if keys[K_b]:
+                print('In Room: ',current_room)
+                if Path(positions_csv_name).is_file():
+                    print('Positions File Exists')
+                    df = pd.read_csv(positions_csv_name)
+                    if not df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room)].empty:
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'bottom_right_x']=position_internal[0]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'bottom_right_y']=position_internal[1]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'bottom_right_z']=position_internal[2]
+                        df.loc[(df['scene_id']==args['scene_ids'][0]) & (df['room_id']==current_room),'bottom_right_angle']=angle_internal
+                        df.to_csv(positions_csv_name, index=False)
+                    else:
+                        position_data= {
+                            'scene_id': args['scene_ids'][0],
+                            'room_id':current_room,
+                            'bottom_right_x': [position_internal[0]],
+                            'bottom_right_y': [position_internal[1]],
+                            'bottom_right_z': [position_internal[2]],
+                            'bottom_right_angle': [angle_internal]
+                        }
+                        df2=pd.DataFrame(position_data)
+                        df=df.append(df2,ignore_index=True)
+                        df.to_csv(positions_csv_name, index=False)
+                else:
+                    print('Positions File does not exist')
+                    position_data= {
+                        'scene_id': args['scene_ids'][0],
+                        'room_id':current_room,
+                        'bottom_right_x': [position_internal[0]],
+                        'bottom_right_y': [position_internal[1]],
+                        'bottom_right_z': [position_internal[2]],
+                        'bottom_right_angle': [angle_internal]
+                    }
+                    df=pd.DataFrame(position_data)
+                    df.to_csv(positions_csv_name, index=False)
             ##################################
             if keys[K_o]:
                 print_next_observation = True
@@ -756,11 +1079,23 @@ def interactive_loop(sim, args):
             position_internal = response['info']['agent_state']['position']
             orientation_internal = response['info']['agent_state']['orientation']
             angle_internal = get_angle_rad(orientation_internal[2], orientation_internal[0])
-            current_room=observation['roomInfo']['id']
+            current_room = observation['roomInfo']['id']
             has_collided = observation['collision']
             direction = observation['measurements']['direction_to_goal']
             # print('Position: ',response['info']['agent_state']['position'])
             # print('Orientation: ',response['info']['agent_state']['orientation'])
+
+            save_observation_data(
+                image_save_directory=image_save_directory,
+                data_csv_name=data_csv_name,
+                observation = observation,
+                image_counter = image_counter,
+                scene_id = args['scene_ids'][0],
+                position =position_internal,
+                bounds=bounds
+            )
+            
+            image_counter = image_counter+1
             ###########################
             map = observation.get('map')
             if map is not None:
